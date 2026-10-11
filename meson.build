@@ -3,7 +3,7 @@ project('victoria', 'c',
 
   # Do not forget when releasing:
   #  * Set release date in data/org.gnome.Nautilus.metainfo.xml.in.in
-  version: '47.6',
+  version: '1.47.7',
 
   meson_version: '>= 0.59.0',
   license: 'GPL-3.0-or-later'
