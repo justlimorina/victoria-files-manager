@@ -55,6 +55,7 @@
 #ifdef G_OS_WIN32
 #include <windows.h>
 #include <shellapi.h>
+#include <dbt.h>
 #endif
 
 #pragma GCC diagnostic ignored "-Wshadow"
@@ -3391,12 +3392,163 @@ hostname_proxy_new_cb (GObject      *source_object,
   update_hostname (sidebar);
 }
 
+#ifdef G_OS_WIN32
+static HWND win32_device_listener_hwnd = NULL;
+static HDEVNOTIFY win32_device_notify_handle = NULL;
+static GList *win32_active_sidebars = NULL;
+static DWORD win32_last_drives_mask = 0;
+static guint win32_drive_poll_id = 0;
+static guint win32_debounce_update_id = 0;
+
+static void
+win32_update_all_sidebars (void)
+{
+  GList *l;
+  for (l = win32_active_sidebars; l != NULL; l = l->next)
+    {
+      NautilusGtkPlacesSidebar *sb = NAUTILUS_GTK_PLACES_SIDEBAR (l->data);
+      update_places (sb);
+    }
+}
+
+static gboolean
+win32_debounce_update_cb (gpointer user_data)
+{
+  win32_debounce_update_id = 0;
+  win32_last_drives_mask = GetLogicalDrives ();
+  win32_update_all_sidebars ();
+  return G_SOURCE_REMOVE;
+}
+
+static void
+win32_trigger_drive_change (void)
+{
+  win32_last_drives_mask = GetLogicalDrives ();
+  win32_update_all_sidebars ();
+
+  /* Re-check 600ms later to ensure volume label / filesystem details have fully settled */
+  if (win32_debounce_update_id != 0)
+    {
+      g_source_remove (win32_debounce_update_id);
+    }
+  win32_debounce_update_id = g_timeout_add (600, win32_debounce_update_cb, NULL);
+}
+
+static LRESULT CALLBACK
+win32_device_listener_wndproc (HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+  if (msg == WM_DEVICECHANGE)
+    {
+      /* 0x8000 = DBT_DEVICEARRIVAL, 0x8004 = DBT_DEVICEREMOVECOMPLETE, 0x0007 = DBT_DEVNODES_CHANGED */
+      if (wParam == 0x8000 || wParam == 0x8004 || wParam == 0x0007)
+        {
+          win32_trigger_drive_change ();
+        }
+    }
+  return DefWindowProcW (hwnd, msg, wParam, lParam);
+}
+
+static gboolean
+win32_drive_poll_cb (gpointer user_data)
+{
+  DWORD current = GetLogicalDrives ();
+  if (current != win32_last_drives_mask)
+    {
+      win32_trigger_drive_change ();
+    }
+  return G_SOURCE_CONTINUE;
+}
+
+static void
+win32_register_sidebar_for_drive_changes (NautilusGtkPlacesSidebar *sidebar)
+{
+  if (win32_active_sidebars == NULL)
+    {
+      WNDCLASSEXW wc = { 0 };
+      wc.cbSize = sizeof (wc);
+      wc.lpfnWndProc = win32_device_listener_wndproc;
+      wc.hInstance = GetModuleHandleW (NULL);
+      wc.lpszClassName = L"VictoriaDeviceListener";
+      RegisterClassExW (&wc);
+
+      win32_device_listener_hwnd = CreateWindowExW (
+        0,
+        wc.lpszClassName,
+        L"",
+        WS_POPUP,
+        0, 0, 0, 0,
+        NULL,
+        NULL,
+        wc.hInstance,
+        NULL
+      );
+
+      if (win32_device_listener_hwnd != NULL)
+        {
+          DEV_BROADCAST_DEVICEINTERFACE_W filter = { 0 };
+          filter.dbcc_size = sizeof (filter);
+          filter.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+          win32_device_notify_handle = RegisterDeviceNotificationW (
+            win32_device_listener_hwnd,
+            &filter,
+            DEVICE_NOTIFY_WINDOW_HANDLE | DEVICE_NOTIFY_ALL_INTERFACE_CLASSES
+          );
+        }
+
+      win32_last_drives_mask = GetLogicalDrives ();
+
+      /* Fallback 1-second timer to catch virtual / network drives */
+      win32_drive_poll_id = g_timeout_add_seconds (1, win32_drive_poll_cb, NULL);
+    }
+
+  if (!g_list_find (win32_active_sidebars, sidebar))
+    {
+      win32_active_sidebars = g_list_prepend (win32_active_sidebars, sidebar);
+    }
+}
+
+static void
+win32_unregister_sidebar_for_drive_changes (NautilusGtkPlacesSidebar *sidebar)
+{
+  win32_active_sidebars = g_list_remove (win32_active_sidebars, sidebar);
+
+  if (win32_active_sidebars == NULL)
+    {
+      if (win32_drive_poll_id != 0)
+        {
+          g_source_remove (win32_drive_poll_id);
+          win32_drive_poll_id = 0;
+        }
+      if (win32_debounce_update_id != 0)
+        {
+          g_source_remove (win32_debounce_update_id);
+          win32_debounce_update_id = 0;
+        }
+      if (win32_device_notify_handle != NULL)
+        {
+          UnregisterDeviceNotification (win32_device_notify_handle);
+          win32_device_notify_handle = NULL;
+        }
+      if (win32_device_listener_hwnd != NULL)
+        {
+          DestroyWindow (win32_device_listener_hwnd);
+          win32_device_listener_hwnd = NULL;
+          UnregisterClassW (L"VictoriaDeviceListener", GetModuleHandleW (NULL));
+        }
+    }
+}
+#endif
+
 static void
 create_volume_monitor (NautilusGtkPlacesSidebar *sidebar)
 {
   g_assert (sidebar->volume_monitor == NULL);
 
   sidebar->volume_monitor = g_volume_monitor_get ();
+
+#ifdef G_OS_WIN32
+  win32_register_sidebar_for_drive_changes (sidebar);
+#endif
 
   g_signal_connect_object (sidebar->volume_monitor, "volume_added",
                            G_CALLBACK (update_places), sidebar, G_CONNECT_SWAPPED);
@@ -3662,6 +3814,10 @@ nautilus_gtk_places_sidebar_dispose (GObject *object)
                                     (gpointer *) &sidebar->trash_row);
       sidebar->trash_row = NULL;
     }
+
+#ifdef G_OS_WIN32
+  win32_unregister_sidebar_for_drive_changes (sidebar);
+#endif
 
   if (sidebar->volume_monitor != NULL)
     {
