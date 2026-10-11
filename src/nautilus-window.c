@@ -1757,7 +1757,7 @@ nautilus_window_show_about_dialog (NautilusWindow *window)
                            "application-icon", APPLICATION_ID,
                            "developer-name", "Victoria Project",
                            "version", VERSION,
-                           "website", "https://github.com/victoria",
+                           "website", "https://github.com/justlimorina/victoria-files-manager",
                            "debug-info", debug_info,
                            "copyright", "© 1999-2026 The Victoria & GNOME Files Authors",
                            "license-type", GTK_LICENSE_GPL_3_0,
