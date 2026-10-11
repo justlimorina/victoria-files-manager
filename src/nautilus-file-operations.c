@@ -7844,6 +7844,7 @@ empty_trash_thread_func (GTask        *task,
     {
 #ifdef _WIN32
         SHEmptyRecycleBinW (NULL, NULL, 0);
+        return;
 #endif
         for (l = job->trash_dirs;
              l != NULL && !job_aborted (common);

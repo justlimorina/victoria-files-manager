@@ -250,6 +250,8 @@ libnautilus_sources = [
   'nautilus-thumbnails.h',
   'nautilus-trash-monitor.c',
   'nautilus-trash-monitor.h',
+  'nautilus-win32-recycle-bin.c',
+  'nautilus-win32-recycle-bin.h',
   'nautilus-ui-utilities.c',
   'nautilus-ui-utilities.h',
   'nautilus-video-mime-types.h',

@@ -47,6 +47,7 @@
 #include "nautilus-trash-monitor.h"
 #include "nautilus-ui-utilities.h"
 #include "nautilus-window-slot.h"
+#include "nautilus-win32-recycle-bin.h"
 
 #ifdef GDK_WINDOWING_X11
 #include <gdk/x11/gdkx.h>
@@ -256,7 +257,8 @@ call_open_location (NautilusGtkPlacesSidebar *self,
 #ifdef G_OS_WIN32
   if (location != NULL && g_file_has_uri_scheme (location, "trash"))
     {
-      ShellExecuteW (NULL, L"open", L"shell:RecycleBinFolder", NULL, NULL, SW_SHOWNORMAL);
+      GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
+      nautilus_win32_recycle_bin_show (GTK_IS_WINDOW (root) ? GTK_WINDOW (root) : NULL);
       return;
     }
 #endif
