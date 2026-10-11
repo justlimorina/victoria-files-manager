@@ -4,6 +4,7 @@
   <template class="NautilusFileConflictDialog" parent="AdwWindow">
     <property name="modal">True</property>
     <property name="resizable">False</property>
+    <property name="focus-widget">replace_button</property>
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">

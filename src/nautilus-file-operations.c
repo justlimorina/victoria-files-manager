@@ -3811,6 +3811,12 @@ fat_str_replace (char *str,
         }
     }
 
+    if (i > 0 && str[--i] == '.')
+    {
+        str[i] = replacement;
+        success = TRUE;
+    }
+
     return success;
 }
 
