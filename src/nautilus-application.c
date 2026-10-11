@@ -38,7 +38,9 @@
 #include <nautilus-extension.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifndef _WIN32
 #include <xdp-gnome/externalwindow.h>
+#endif
 
 #include "nautilus-bookmark-list.h"
 #include "nautilus-clipboard.h"
@@ -927,7 +929,7 @@ nautilus_application_command_line (GApplication            *application,
     if (g_variant_dict_contains (options, "version"))
     {
         g_application_command_line_print (command_line,
-                                          "GNOME nautilus " PACKAGE_VERSION "\n");
+                                          "Victoria " PACKAGE_VERSION "\n");
         retval = EXIT_SUCCESS;
         goto out;
     }
@@ -967,7 +969,7 @@ nautilus_application_init (NautilusApplication *self)
         },
         {
             "quit", 'q', 0, G_OPTION_ARG_NONE, NULL,
-            N_("Quit Nautilus."), NULL
+            N_("Quit Victoria."), NULL
         },
         {
             "select", 's', 0, G_OPTION_ARG_NONE, NULL,
@@ -1138,6 +1140,7 @@ nautilus_application_startup (GApplication *app)
 
     g_application_set_resource_base_path (G_APPLICATION (self), "/org/gnome/nautilus");
 
+#ifndef _WIN32
     /* Initialize GDK display (for wayland-x11-interop protocol) before GTK does
      * it during the chain-up. */
     g_autoptr (GError) error = NULL;
@@ -1147,13 +1150,16 @@ nautilus_application_startup (GApplication *app)
         g_message ("Failed to initialize display server connection: %s",
                    error->message);
     }
+#endif
 
     /* Chain up to the GtkApplication implementation early, so that gtk_init()
      * is called for us.
      */
     G_APPLICATION_CLASS (nautilus_application_parent_class)->startup (G_APPLICATION (self));
 
+#ifndef _WIN32
     g_assert (display == NULL || gdk_display_get_default () == display);
+#endif
 
     gtk_window_set_default_icon_name (APPLICATION_ID);
 

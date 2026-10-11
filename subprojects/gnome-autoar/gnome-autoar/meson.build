@@ -71,7 +71,7 @@ libgnome_autoar = shared_library(
 
 libgnome_autoar_dep = declare_dependency(
   sources: enum_sources[1],
-  include_directories: src_inc,
+  include_directories: [src_inc, top_inc],
   dependencies: deps,
   link_with: libgnome_autoar,
 )

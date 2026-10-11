@@ -35,7 +35,9 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
 #include <unistd.h>
 #include <signal.h>
 #include <libgnome-desktop/gnome-desktop-thumbnail.h>

@@ -66,17 +66,19 @@ if python.found()
 endif
 appdata_conf.set('release-version', release_version)
 
-appdata = i18n.merge_file(
-  input: configure_file(
-    input: files('org.gnome.Nautilus.metainfo.xml.in.in'),
-    output: 'org.gnome.Nautilus.metainfo.xml.in',
-    configuration: appdata_conf
-  ),
-  output: '@0@.metainfo.xml'.format(application_id),
-  install: true,
-  install_dir: join_paths(datadir, 'metainfo'),
-  po_dir: po_dir
-)
+if host_machine.system() != 'windows'
+  appdata = i18n.merge_file(
+    input: configure_file(
+      input: files('org.gnome.Nautilus.metainfo.xml.in.in'),
+      output: 'org.gnome.Nautilus.metainfo.xml.in',
+      configuration: appdata_conf
+    ),
+    output: '@0@.metainfo.xml'.format(application_id),
+    install: true,
+    install_dir: join_paths(datadir, 'metainfo'),
+    po_dir: po_dir
+  )
+endif
 
 service_conf = configuration_data()
 service_conf.set('appid', application_id)

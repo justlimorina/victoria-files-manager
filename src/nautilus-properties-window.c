@@ -27,7 +27,9 @@
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <glib/gi18n.h>
+#ifndef G_OS_WIN32
 #include <gio/gunixmounts.h>
+#endif
 #include <nautilus-extension.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -2528,6 +2530,7 @@ setup_open_in_disks (NautilusPropertiesWindow *self)
         self->device_identifier = g_volume_get_identifier (volume,
                                                            G_VOLUME_IDENTIFIER_KIND_UNIX_DEVICE);
     }
+#ifndef G_OS_WIN32
     else
     {
         g_autoptr (GFile) location = NULL;
@@ -2542,6 +2545,7 @@ setup_open_in_disks (NautilusPropertiesWindow *self)
             self->device_identifier = g_strdup (g_unix_mount_get_device_path (mount_entry));
         }
     }
+#endif
 
     gtk_widget_set_visible (self->open_in_disks_button_row, (self->device_identifier != NULL));
 }

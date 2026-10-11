@@ -82,6 +82,10 @@ add_project_arguments(
   language: 'c'
 )
 
+if host_machine.system() == 'windows'
+  add_project_arguments('-include', meson.current_source_dir() / 'subprojects/win32-compat/include/win32-fixups.h', language: 'c')
+endif
+
 ##################
 # Module imports #
 ##################
@@ -115,8 +119,10 @@ else
 endif
 glib = dependency('glib-2.0', version: glib_ver)
 gmodule = dependency('gmodule-no-export-2.0', version: glib_ver)
-subproject('gnome-autoar', default_options: ['introspection=disabled', 'vapi=false', 'tests=false', 'docs=false'])
-gnome_autoar = dependency('gnome-autoar-0')
+gnome_autoar = dependency('gnome-autoar-0', fallback: ['gnome-autoar', 'libgnome_autoar_dep'])
+if host_machine.system() == 'windows'
+  subproject('win32-compat')
+endif
 gnome_desktop = dependency('gnome-desktop-4', version: '>= 43')
 gtk = dependency('gtk4', version: '>= 4.15.2')
 gtk_x11 = dependency('gtk4-x11', required: false)
@@ -217,11 +223,14 @@ nautilus_include_dirs = include_directories(
 subdirs = [
   'data',
   'eel',
-  'xdp-gnome',
   'libnautilus-extension',
   'po',
   'src',
 ]
+
+if host_machine.system() != 'windows'
+  subdirs += 'xdp-gnome'
+endif
 
 ########################
 # Conditional building #

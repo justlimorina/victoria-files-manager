@@ -928,9 +928,7 @@ autoar_extractor_do_write_entry (AutoarExtractor      *self,
                                  GFile                *hardlink)
 {
   mode_t filetype;
-#if defined HAVE_LINK || defined HAVE_MKNOD || defined HAVE_MKFIFO
   int r;
-#endif
 
   {
     g_autoptr (GFile) parent = g_file_get_parent (dest);

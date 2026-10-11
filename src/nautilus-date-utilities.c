@@ -14,8 +14,9 @@
 #include <locale.h>
 #include <time.h>
 
-
+#ifndef _WIN32
 G_DEFINE_AUTO_CLEANUP_FREE_FUNC (locale_t, freelocale, (locale_t) 0)
+#endif
 
 static gboolean use_24_hour;
 static gboolean use_detailed_date_format;
@@ -56,10 +57,11 @@ date_to_str (GDateTime *timestamp,
              gboolean   use_short_format,
              gboolean   detailed_date)
 {
+    const gchar *format;
+#ifndef _WIN32
     const char *time_locale = setlocale (LC_TIME, NULL);
     locale_t current_locale = uselocale ((locale_t) 0);
     g_auto (locale_t) forced_locale = (locale_t) 0;
-    const gchar *format;
 
     /* We are going to pick a translatable string which defines a time format,
      * which is then used to obtain a final string for the current time.
@@ -72,6 +74,7 @@ date_to_str (GDateTime *timestamp,
      */
     forced_locale = newlocale (LC_MESSAGES_MASK, time_locale, duplocale (current_locale));
     uselocale (forced_locale);
+#endif
 
     if (use_short_format && detailed_date)
     {
@@ -172,8 +175,10 @@ date_to_str (GDateTime *timestamp,
         }
     }
 
+#ifndef _WIN32
     /* Restore locale settings */
     uselocale (current_locale);
+#endif
 
     g_autofree gchar *formatted = g_date_time_format (timestamp, format);
 

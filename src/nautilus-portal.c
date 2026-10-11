@@ -9,6 +9,40 @@
 #define G_LOG_DOMAIN "nautilus-dbus"
 
 #include "nautilus-portal.h"
+#include <glib.h>
+
+#ifdef G_OS_WIN32
+
+struct _NautilusPortal
+{
+    GObject parent;
+};
+
+G_DEFINE_TYPE (NautilusPortal, nautilus_portal, G_TYPE_OBJECT);
+
+static void nautilus_portal_init (NautilusPortal *self) {}
+static void nautilus_portal_class_init (NautilusPortalClass *klass) {}
+
+NautilusPortal *
+nautilus_portal_new (void)
+{
+    return g_object_new (NAUTILUS_TYPE_PORTAL, NULL);
+}
+
+void
+nautilus_portal_unregister (NautilusPortal *self)
+{
+}
+
+gboolean
+nautilus_portal_register (NautilusPortal   *self,
+                          GDBusConnection  *connection,
+                          GError          **error)
+{
+    return TRUE;
+}
+
+#else
 
 #include <config.h>
 #include <glib/gi18n.h>
@@ -623,3 +657,5 @@ nautilus_portal_unregister (NautilusPortal *self)
 {
     g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (self->impl_file_chooser_skeleton));
 }
+
+#endif

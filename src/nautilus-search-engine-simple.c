@@ -29,7 +29,9 @@
 
 #include <string.h>
 #include <glib.h>
+#ifndef G_OS_WIN32
 #include <gio/gunixmounts.h>
+#endif
 #include <gio/gio.h>
 
 #define BATCH_SIZE 500
@@ -484,19 +486,23 @@ static gpointer
 search_thread_func (gpointer user_data)
 {
     SearchThreadData *data;
+#ifndef G_OS_WIN32
     g_autoptr (GUnixMountMonitor) mount_monitor = NULL;
+#endif
     GFile *dir;
     GFileInfo *info;
     const char *id;
 
     data = user_data;
 
+#ifndef G_OS_WIN32
     if (nautilus_query_get_recursive (data->query) == NAUTILUS_QUERY_RECURSIVE_LOCAL_ONLY)
     {
         /* Need to retain a mount monitor so that filesystem queries used to
          * determine if we recurse are done fast. */
         mount_monitor = g_unix_mount_monitor_get ();
     }
+#endif
 
     /* Insert id for toplevel directory into visited */
     dir = g_queue_peek_head (data->directories);

@@ -208,6 +208,10 @@ nautilus_is_home_directory (GFile *dir)
 gboolean
 nautilus_is_root_directory (GFile *dir)
 {
+#ifdef G_OS_WIN32
+    g_autoptr (GFile) parent = g_file_get_parent (dir);
+    return parent == NULL;
+#else
     static GFile *root_dir = NULL;
 
     if (root_dir == NULL)
@@ -216,6 +220,7 @@ nautilus_is_root_directory (GFile *dir)
     }
 
     return g_file_equal (dir, root_dir);
+#endif
 }
 
 gboolean

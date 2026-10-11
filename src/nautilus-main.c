@@ -56,6 +56,7 @@ main (int   argc,
 
     g_set_prgname (APPLICATION_ID);
 
+#ifndef G_OS_WIN32
     if (getuid () == 0)
     {
         g_warning (_("\n========================================================"
@@ -64,6 +65,7 @@ main (int   argc,
                      "\n========================================================"));
         sleep (7);
     }
+#endif
 
     nautilus_register_resource ();
     /* Run the nautilus application. */

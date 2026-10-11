@@ -279,6 +279,10 @@ libnautilus_sources = [
   'nautilus-tracker-utilities.h'
 ]
 
+if not is_variable('xdp_gnome')
+  xdp_gnome = []
+endif
+
 nautilus_deps = [
   config_h,
   eel_2,

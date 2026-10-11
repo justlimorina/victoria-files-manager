@@ -219,6 +219,11 @@ get_tracker_locations (const gchar *key)
     gint idx;
     GFile *location;
 
+    if (localsearch_preferences == NULL)
+    {
+        return NULL;
+    }
+
     locations = g_settings_get_strv (localsearch_preferences, key);
 
     for (idx = 0; locations[idx] != NULL; idx++)

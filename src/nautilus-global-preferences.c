@@ -107,7 +107,16 @@ nautilus_global_preferences_init (void)
     gnome_lockdown_preferences = g_settings_new ("org.gnome.desktop.lockdown");
     gnome_interface_preferences = g_settings_new ("org.gnome.desktop.interface");
     gnome_privacy_preferences = g_settings_new ("org.gnome.desktop.privacy");
-    localsearch_preferences = g_settings_new ("org.freedesktop.Tracker3.Miner.Files");
+    GSettingsSchemaSource *schema_source = g_settings_schema_source_get_default ();
+    if (schema_source != NULL &&
+        g_settings_schema_source_lookup (schema_source, "org.freedesktop.Tracker3.Miner.Files", TRUE) != NULL)
+    {
+        localsearch_preferences = g_settings_new ("org.freedesktop.Tracker3.Miner.Files");
+    }
+    else
+    {
+        localsearch_preferences = NULL;
+    }
 
     g_signal_connect_swapped (nautilus_preferences,
                               "changed::" NAUTILUS_PREFERENCES_MOUSE_BACK_BUTTON,
