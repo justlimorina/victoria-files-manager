@@ -42,6 +42,11 @@
 #include <glib/gi18n.h>
 #include <adwaita.h>
 
+#ifdef G_OS_WIN32
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
 #include "nautilus-file.h"
 #include "nautilus-file-utilities.h"
 #include "nautilus-global-preferences.h"
@@ -1432,6 +1437,14 @@ nautilus_window_slot_open_location_full (NautilusWindowSlot *self,
                                          NautilusOpenFlags   flags,
                                          GList              *new_selection)
 {
+#ifdef G_OS_WIN32
+    if (location != NULL && g_file_has_uri_scheme (location, "trash"))
+    {
+        ShellExecuteW (NULL, L"open", L"shell:RecycleBinFolder", NULL, NULL, SW_SHOWNORMAL);
+        return;
+    }
+#endif
+
     GFile *old_location = nautilus_window_slot_get_location (self);
 
     nautilus_window_slot_set_search_global (self, FALSE);

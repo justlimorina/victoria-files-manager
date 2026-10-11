@@ -31,6 +31,12 @@
 #include <sys/types.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#undef DELETE
+#endif
+
 #include "nautilus-file-operations.h"
 
 #include "nautilus-file-changes-queue.h"
@@ -7836,6 +7842,9 @@ empty_trash_thread_func (GTask        *task,
     }
     if (confirmed)
     {
+#ifdef _WIN32
+        SHEmptyRecycleBinW (NULL, NULL, 0);
+#endif
         for (l = job->trash_dirs;
              l != NULL && !job_aborted (common);
              l = l->next)

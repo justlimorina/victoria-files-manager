@@ -52,6 +52,11 @@
 #include <gdk/x11/gdkx.h>
 #endif
 
+#ifdef G_OS_WIN32
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
 #pragma GCC diagnostic ignored "-Wshadow"
 
 /*< private >
@@ -247,6 +252,14 @@ call_open_location (NautilusGtkPlacesSidebar *self,
                     NautilusWindowSlot       *preferred_slot,
                     NautilusOpenFlags         open_flags)
 {
+#ifdef G_OS_WIN32
+  if (location != NULL && g_file_has_uri_scheme (location, "trash"))
+    {
+      ShellExecuteW (NULL, L"open", L"shell:RecycleBinFolder", NULL, NULL, SW_SHOWNORMAL);
+      return;
+    }
+#endif
+
   if ((open_flags & self->open_flags) == 0)
     open_flags = NAUTILUS_OPEN_FLAG_NORMAL;
 
@@ -722,11 +735,19 @@ update_places (NautilusGtkPlacesSidebar *sidebar)
   if (sidebar->show_trash)
     {
       start_icon = nautilus_trash_monitor_get_symbolic_icon ();
+#ifdef G_OS_WIN32
+      sidebar->trash_row = add_place (sidebar, NAUTILUS_GTK_PLACES_BUILT_IN,
+                                      NAUTILUS_GTK_PLACES_SECTION_DEFAULT_LOCATIONS,
+                                      _("Recycle Bin"), start_icon, NULL, SCHEME_TRASH ":///",
+                                      NULL, NULL, NULL, NULL, 0,
+                                      _("Open Recycle Bin"));
+#else
       sidebar->trash_row = add_place (sidebar, NAUTILUS_GTK_PLACES_BUILT_IN,
                                       NAUTILUS_GTK_PLACES_SECTION_DEFAULT_LOCATIONS,
                                       _("Trash"), start_icon, NULL, SCHEME_TRASH ":///",
                                       NULL, NULL, NULL, NULL, 0,
                                       _("Open Trash"));
+#endif
       g_object_add_weak_pointer (G_OBJECT (sidebar->trash_row),
                                  (gpointer *) &sidebar->trash_row);
       g_object_unref (start_icon);
@@ -2909,7 +2930,11 @@ create_row_popover (NautilusGtkPlacesSidebar *sidebar,
 
   if (is_trash) {
     section = g_menu_new ();
+#ifdef G_OS_WIN32
+    item = g_menu_item_new (_("_Empty Recycle Bin…"), "row.empty-trash");
+#else
     item = g_menu_item_new (_("_Empty Trash…"), "row.empty-trash");
+#endif
     g_menu_append_item (section, item);
     g_object_unref (item);
 

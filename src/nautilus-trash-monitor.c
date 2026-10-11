@@ -23,6 +23,11 @@
 
 #include "nautilus-scheme.h"
 
+#ifdef G_OS_WIN32
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
 #define UPDATE_RATE_SECONDS 1
 
 struct _NautilusTrashMonitor
@@ -108,6 +113,7 @@ update_empty_info (NautilusTrashMonitor *trash_monitor,
  * trash backend since it uses a cache. In this way we prevent flooding the
  * trash backend with enumeration requests when trashing > 1000 files
  */
+#ifndef G_OS_WIN32
 static void
 trash_query_info_cb (GObject      *source,
                      GAsyncResult *res,
@@ -150,10 +156,15 @@ schedule_update_info_cb (gpointer data)
 
     return G_SOURCE_REMOVE;
 }
+#endif
 
 static void
 schedule_update_info (NautilusTrashMonitor *trash_monitor)
 {
+#ifdef G_OS_WIN32
+    gboolean is_empty = nautilus_trash_monitor_is_empty ();
+    update_empty_info (trash_monitor, is_empty);
+#else
     GFile *location;
 
     /* Rate limit the updates to not flood the gvfsd-trash when too many changes
@@ -176,8 +187,10 @@ schedule_update_info (NautilusTrashMonitor *trash_monitor)
                                                        schedule_update_info_cb,
                                                        trash_monitor);
     g_object_unref (location);
+#endif
 }
 
+#ifndef G_OS_WIN32
 static void
 file_changed (GFileMonitor      *monitor,
               GFile             *child,
@@ -191,10 +204,18 @@ file_changed (GFileMonitor      *monitor,
 
     schedule_update_info (trash_monitor);
 }
+#endif
 
 static void
 nautilus_trash_monitor_init (NautilusTrashMonitor *trash_monitor)
 {
+#ifdef G_OS_WIN32
+    trash_monitor->empty = nautilus_trash_monitor_is_empty ();
+    trash_monitor->file_monitor = NULL;
+    trash_monitor->pending = FALSE;
+    trash_monitor->timeout_id = 0;
+    schedule_update_info (trash_monitor);
+#else
     GFile *location;
 
     trash_monitor->empty = TRUE;
@@ -211,6 +232,7 @@ nautilus_trash_monitor_init (NautilusTrashMonitor *trash_monitor)
     g_object_unref (location);
 
     schedule_update_info (trash_monitor);
+#endif
 }
 
 NautilusTrashMonitor *
@@ -231,10 +253,20 @@ nautilus_trash_monitor_get (void)
 gboolean
 nautilus_trash_monitor_is_empty (void)
 {
+#ifdef G_OS_WIN32
+    SHQUERYRBINFO rbinfo = { 0 };
+    rbinfo.cbSize = sizeof (SHQUERYRBINFO);
+    if (SUCCEEDED (SHQueryRecycleBinW (NULL, &rbinfo)))
+    {
+        return (rbinfo.i64NumItems == 0);
+    }
+    return TRUE;
+#else
     NautilusTrashMonitor *monitor;
 
     monitor = nautilus_trash_monitor_get ();
     return monitor->empty;
+#endif
 }
 
 GIcon *
