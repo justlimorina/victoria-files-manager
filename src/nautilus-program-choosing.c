@@ -34,6 +34,12 @@
 #include <stdlib.h>
 
 #include <gdk/gdk.h>
+#include "nautilus-mime-actions.h"
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#include <gdk/win32/gdkwin32.h>
+#endif
 
 static void
 add_file_to_recent (NautilusFile *file,
@@ -193,6 +199,110 @@ nautilus_launch_application_by_uri (GAppInfo  *application,
 
     error = NULL;
 
+#ifdef _WIN32
+    if (count == total)
+    {
+        HWND parent_hwnd = NULL;
+        if (parent_window != NULL)
+        {
+            GtkNative *native = gtk_widget_get_native (GTK_WIDGET (parent_window));
+            if (native != NULL)
+            {
+                GdkSurface *surface = gtk_native_get_surface (native);
+                if (surface != NULL && GDK_IS_WIN32_SURFACE (surface))
+                {
+                    parent_hwnd = (HWND) gdk_win32_surface_get_handle (surface);
+                }
+            }
+        }
+
+        const char *app_exe = application != NULL ? g_app_info_get_executable (application) : NULL;
+
+        result = TRUE;
+        for (l = locations; l != NULL; l = l->next)
+        {
+            location = G_FILE (l->data);
+            g_autofree char *path = g_file_get_path (location);
+            if (path == NULL)
+            {
+                continue;
+            }
+
+            wchar_t *wide_path = (wchar_t *) g_utf8_to_utf16 (path, -1, NULL, NULL, NULL);
+            if (wide_path == NULL)
+            {
+                continue;
+            }
+
+            SHELLEXECUTEINFOW sei = { 0 };
+            sei.cbSize = sizeof (sei);
+            sei.fMask = SEE_MASK_FLAG_DDEWAIT | SEE_MASK_NOASYNC;
+            sei.hwnd = parent_hwnd;
+            sei.lpVerb = L"open";
+            sei.nShow = SW_SHOWNORMAL;
+
+            wchar_t *wide_exe = NULL;
+            wchar_t *wide_params = NULL;
+
+            /* Check if this is the default application for the file. */
+            g_autofree char *file_uri = g_file_get_uri (location);
+            NautilusFile *nfile = nautilus_file_get_by_uri (file_uri);
+            GAppInfo *default_app = nfile != NULL ? nautilus_mime_get_default_application_for_file (nfile) : NULL;
+            if (nfile != NULL)
+            {
+                nautilus_file_unref (nfile);
+            }
+
+            gboolean is_default = (application == NULL) ||
+                                  (default_app != NULL && g_app_info_equal (application, default_app));
+            if (default_app != NULL)
+            {
+                g_object_unref (default_app);
+            }
+
+            if (!is_default && app_exe != NULL)
+            {
+                wide_exe = (wchar_t *) g_utf8_to_utf16 (app_exe, -1, NULL, NULL, NULL);
+                sei.lpFile = wide_exe;
+                g_autofree char *quoted_path = g_strdup_printf ("\"%s\"", path);
+                wide_params = (wchar_t *) g_utf8_to_utf16 (quoted_path, -1, NULL, NULL, NULL);
+                sei.lpParameters = wide_params;
+            }
+            else
+            {
+                sei.lpFile = wide_path;
+                sei.lpParameters = NULL;
+            }
+
+            BOOL ok = ShellExecuteExW (&sei);
+            if (!ok)
+            {
+                /* If open failed (e.g. no association registered yet), try openas */
+                sei.lpVerb = L"openas";
+                sei.lpFile = wide_path;
+                sei.lpParameters = NULL;
+                ok = ShellExecuteExW (&sei);
+            }
+
+            g_free (wide_path);
+            g_free (wide_exe);
+            g_free (wide_params);
+
+            if (!ok)
+            {
+                result = FALSE;
+            }
+        }
+    }
+    else
+    {
+        /* Some files are non local, use g_app_info_launch_uris (). */
+        result = g_app_info_launch_uris (application,
+                                         uris,
+                                         G_APP_LAUNCH_CONTEXT (launch_context),
+                                         &error);
+    }
+#else
     if (count == total)
     {
         /* All files are local, so we can use g_app_info_launch () with
@@ -212,6 +322,7 @@ nautilus_launch_application_by_uri (GAppInfo  *application,
                                          G_APP_LAUNCH_CONTEXT (launch_context),
                                          &error);
     }
+#endif
 
     if (result)
     {
@@ -234,6 +345,28 @@ launch_application_from_command_internal (const gchar *full_command,
     GAppInfoCreateFlags flags;
     g_autoptr (GError) error = NULL;
     g_autoptr (GAppInfo) app = NULL;
+
+#ifdef _WIN32
+    if (!use_terminal)
+    {
+        wchar_t *wcmd = (wchar_t *) g_utf8_to_utf16 (full_command, -1, NULL, NULL, NULL);
+        if (wcmd != NULL)
+        {
+            SHELLEXECUTEINFOW sei = { 0 };
+            sei.cbSize = sizeof (sei);
+            sei.fMask = SEE_MASK_FLAG_DDEWAIT | SEE_MASK_NOASYNC;
+            sei.lpVerb = L"open";
+            sei.lpFile = wcmd;
+            sei.nShow = SW_SHOWNORMAL;
+            if (ShellExecuteExW (&sei))
+            {
+                g_free (wcmd);
+                return;
+            }
+            g_free (wcmd);
+        }
+    }
+#endif
 
     flags = G_APP_INFO_CREATE_NONE;
     if (use_terminal)

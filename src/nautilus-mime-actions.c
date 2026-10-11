@@ -1704,8 +1704,23 @@ activate_files_internal (ActivateParameters *parameters)
         {
             char *uri = l->data;
 
+#ifdef _WIN32
+            g_autoptr (GFile) check_loc = g_file_new_for_uri (uri);
+            if (g_file_is_native (check_loc))
+            {
+                GList single_uri_list = { .data = uri, .next = NULL };
+                nautilus_launch_application_by_uri (NULL,
+                                                    &single_uri_list,
+                                                    parameters->parent_window);
+            }
+            else
+            {
+                application_unhandled_uri (parameters, uri);
+            }
+#else
             /* this does not block */
             application_unhandled_uri (parameters, uri);
+#endif
         }
     }
 
