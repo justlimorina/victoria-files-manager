@@ -1,0 +1,7 @@
+option('introspection', type: 'feature', value: 'auto', description: 'build introspection support')
+option('vapi', type: 'boolean', value: false, description: 'build vala bindings')
+
+option('tests', type: 'boolean', value: false, description: 'build tests')
+
+option('gtk_doc', type: 'boolean', deprecated: true)
+option('docs', type: 'boolean', value: false, description: 'build API reference')

@@ -1,0 +1,323 @@
+/*
+ * SPDX-FileCopyrightText: 2013, 2014  Ting-Wei Lan
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ *
+ * Some common functions used in several classes of gnome-autoar
+ * This file does NOT declare any new classes and it should NOT
+ * be used outside the library itself!
+ */
+
+#define G_LOG_DOMAIN "gnome-autoar"
+
+#include "config.h"
+#include "autoar-private.h"
+
+#include "autoar-misc.h"
+
+#include <glib.h>
+#include <gobject/gvaluecollector.h>
+#include <string.h>
+
+/**
+ * SECTION:autoar-common
+ * @Short_description: Miscellaneous functions used by gnome-autoar
+ * @Title: autoar-common
+ * @Include: gnome-autoar/autoar.h
+ *
+ * Public utility functions used internally by other gnome-autoar functions.
+ **/
+
+typedef struct _AutoarCommonSignalData AutoarCommonSignalData;
+
+struct _AutoarCommonSignalData
+{
+  GValue instance_and_params[3]; /* Maximum number of parameters + 1 */
+  gssize used_values; /* Number of GValues to be unset */
+  guint signal_id;
+  GQuark detail;
+
+  /* Used for synchronization of return values */
+  gboolean completed;
+  GValue return_value;
+  GMutex mutex;
+  GCond cond;
+};
+
+/**
+ * autoar_common_get_filename_extension:
+ * @filename: a filename
+ *
+ * Gets the extension of a filename.
+ *
+ * Returns: (transfer none): a pointer to the extension of the filename
+ **/
+static const char*
+autoar_common_get_filename_extension (const char *filename)
+{
+  const char *dot_location = strrchr (filename, '.');
+
+  if (dot_location == NULL || dot_location == filename) {
+    return filename;
+  }
+
+  if (dot_location - 4 > filename && strncmp (dot_location - 4, ".tar", 4) == 0)
+    return dot_location - 4;
+  else if (dot_location - 5 > filename && strncmp (dot_location - 5, ".cpio", 5) == 0)
+    return dot_location - 5;
+  else 
+    return dot_location;
+}
+
+/**
+ * autoar_common_get_basename_remove_extension:
+ * @filename: a filename
+ *
+ * Gets the basename of a path without its file name extension.
+ *
+ * Returns: (transfer full): a new filename without extension. Free the
+ * returned string with g_free().
+ **/
+G_GNUC_INTERNAL char*
+autoar_common_get_basename_remove_extension (const char *filename)
+{
+  if (filename == NULL) {
+    return NULL;
+  }
+
+  /* filename must not be directory, so we do not get a bad basename. */
+  char *basename = g_path_get_basename (filename);
+  const char *dot_location = autoar_common_get_filename_extension (basename);
+
+  if (dot_location != basename)
+    basename[dot_location - basename] = '\0';
+
+  g_debug ("autoar_common_get_basename_remove_extension: %s => %s",
+           filename,
+           basename);
+  return basename;
+}
+
+static void
+autoar_common_signal_data_free (AutoarCommonSignalData *signal_data)
+{
+  int i;
+
+  for (i = 0; i < signal_data->used_values; i++)
+    g_value_unset (signal_data->instance_and_params + i);
+
+  g_value_unset (&signal_data->return_value);
+  g_mutex_clear (&signal_data->mutex);
+  g_cond_clear (&signal_data->cond);
+
+  g_free (signal_data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(AutoarCommonSignalData, autoar_common_signal_data_free);
+
+static gboolean
+emit_signal (void *data)
+{
+  g_autoptr (AutoarCommonSignalData) signal_data = data;
+
+  g_signal_emitv (signal_data->instance_and_params,
+                  signal_data->signal_id,
+                  signal_data->detail,
+                  NULL);
+
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean
+emit_signal_with_return_value (AutoarCommonSignalData *signal_data)
+{
+  g_signal_emitv (signal_data->instance_and_params,
+                  signal_data->signal_id,
+                  signal_data->detail,
+                  &signal_data->return_value);
+
+  {
+    G_MUTEX_AUTO_LOCK (&signal_data->mutex, locker);
+    signal_data->completed = TRUE;
+  }
+
+  g_cond_signal (&signal_data->cond);
+
+  return G_SOURCE_REMOVE;
+}
+
+/**
+ * autoar_common_g_signal_emit:
+ * @instance: the instance the signal is being emitted on.
+ * @in_thread: %TRUE if you are not call this function inside the main thread.
+ * @signal_id: the signal id
+ * @detail: the detail
+ * @...: parameters to be passed to the signal.
+ *
+ * This is a wrapper for g_signal_emit(). If @in_thread is %FALSE, this
+ * function is the same as g_signal_emit(). If @in_thread is %TRUE, the
+ * signal will be emitted from the main thread. Signals are emitted in a
+ * synchronous manner, meaning this function waits for the main thread to emit
+ * the signal. This allows listeners to respond to signals.
+ **/
+G_GNUC_INTERNAL void
+autoar_common_g_signal_emit (gpointer instance,
+                             gboolean in_thread,
+                             guint signal_id,
+                             GQuark detail,
+                             ...)
+{
+  va_list ap;
+
+  va_start (ap, detail);
+
+  if (!in_thread) {
+    g_signal_emit_valist (instance, signal_id, detail, ap);
+    va_end (ap);
+    return;
+  }
+
+  g_autofree char *error = NULL;
+  GSignalQuery query;
+  g_autoptr (AutoarCommonSignalData) data = g_new0 (AutoarCommonSignalData, 1);
+
+  data->signal_id = signal_id;
+  data->detail = detail;
+  data->used_values = 1;
+  g_value_init (data->instance_and_params, G_TYPE_FROM_INSTANCE (instance));
+  g_value_set_instance (data->instance_and_params, instance);
+
+  g_signal_query (signal_id, &query);
+  if (query.signal_id == 0) {
+    va_end (ap);
+    return;
+  }
+
+  for (int i = 0; i < query.n_params; i++) {
+    G_VALUE_COLLECT_INIT (data->instance_and_params + i + 1,
+                          query.param_types[i],
+                          ap,
+                          0,
+                          &error);
+    if (error != NULL)
+      break;
+    data->used_values++;
+  }
+
+  if (error != NULL) {
+    g_debug ("G_VALUE_COLLECT_INIT: Error: %s", error);
+    va_end (ap);
+    return;
+  }
+
+  if (query.return_type == G_TYPE_NONE) {
+    g_main_context_invoke (NULL, (GSourceFunc) emit_signal, g_steal_pointer (&data));
+  } else {
+    G_MUTEX_AUTO_LOCK (&data->mutex, locker);
+
+    g_value_init (&data->return_value, query.return_type);
+    g_main_context_invoke (NULL, (GSourceFunc) emit_signal_with_return_value, data);
+
+    while (!data->completed)
+      g_cond_wait (&data->cond, &data->mutex);
+
+    g_autofree char *lvalue_error = NULL;
+
+    G_VALUE_LCOPY (&data->return_value, ap, 0, &lvalue_error);
+
+    if (lvalue_error != NULL)
+      g_debug ("G_VALUE_LCOPY: Error: %s", lvalue_error);
+  }
+
+  va_end (ap);
+}
+
+/**
+ * autoar_common_g_error_new_a:
+ * @a: a archive object
+ * @pathname: the file which causes error, or %NULL
+ *
+ * Creates a new #GError with error messages got from libarchive.
+ *
+ * Returns: (transfer full): a #GError. Free with g_error_free().
+ **/
+G_GNUC_INTERNAL GError*
+autoar_common_g_error_new_a (struct archive *a,
+                             const char *pathname)
+{
+  return g_error_new (AUTOAR_LIBARCHIVE_ERROR,
+                      archive_errno (a),
+                      "%s%s%s%s",
+                      pathname != NULL ? "\'" : "",
+                      pathname != NULL ? pathname : "",
+                      pathname != NULL ? "\': " : "",
+                      archive_error_string (a));
+}
+
+/**
+ * autoar_common_g_error_new_a_entry:
+ * @a: a archive object
+ * @entry: a archive_entry object
+ *
+ * Gets pathname from @entry and call autoar_common_g_error_new_a().
+ *
+ * Returns: (transfer full): a #GError. Free with g_error_free().
+ **/
+G_GNUC_INTERNAL GError*
+autoar_common_g_error_new_a_entry (struct archive *a,
+                                   struct archive_entry *entry)
+{
+  return autoar_common_g_error_new_a (a, archive_entry_pathname (entry));
+}
+
+/**
+ * autoar_common_g_file_get_name:
+ * @file: a #GFile
+ *
+ * Gets a string represents the @file. It will be the path of @file if
+ * available. Otherwise, it will be the URI of @file.
+ *
+ * Returns: (transfer full): a string represents the file. Free the string
+ * with g_free().
+ **/
+G_GNUC_INTERNAL char*
+autoar_common_g_file_get_name (GFile *file)
+{
+  char *name;
+  name = g_file_get_path (file);
+  if (name == NULL)
+    name = g_file_get_uri (file);
+  return name;
+}
+
+/**
+ * autoar_common_get_utf8_pathname:
+ * @pathname: a pathname with an unspecified encoding
+ *
+ * Transforms pathname into a UTF-8 filename from a variety of common
+ * legacy encodings.
+ *
+ * Returns: (transfer full): a UTF-8 filename, or %NULL if the filename
+ * could not be converted or is already in UTF-8. Free the string with
+ * g_free().
+ **/
+G_GNUC_INTERNAL char*
+autoar_common_get_utf8_pathname (const char *pathname)
+{
+  char *utf8_pathname;
+  static const char *try_charsets[] = { "CSPC8CODEPAGE437", "ISO-8859-1", "WINDOWS-1252" };
+  guint i;
+
+  if (g_utf8_validate (pathname, -1, NULL))
+    return NULL;
+  /* If pathname is not in UTF-8 encoding already, try
+   * to convert it using commonly used encoding in various archive types.
+   * See also https://git.gnome.org//browse/file-roller/tree/src/fr-process.c#n245 */
+  for (i = 0; i < G_N_ELEMENTS (try_charsets); i++) {
+    utf8_pathname = g_convert (pathname, -1, "UTF-8",
+                               try_charsets[i], NULL, NULL, NULL);
+    if (utf8_pathname != NULL)
+      break;
+  }
+
+  return utf8_pathname;
+}
