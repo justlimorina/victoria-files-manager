@@ -1603,6 +1603,14 @@ choose_program (NautilusFilesView *view,
 
     parent_window = nautilus_files_view_get_containing_window (view);
 
+#ifdef G_OS_WIN32
+    if (nautilus_launch_application_with_dialog (files, parent_window))
+    {
+        nautilus_file_list_free (files);
+        return;
+    }
+#endif
+
     if (nautilus_application_is_sandboxed ())
     {
         sandboxed_choose_program (view, g_steal_pointer (&files), parent_window);

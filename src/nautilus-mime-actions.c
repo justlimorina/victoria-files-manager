@@ -1171,6 +1171,16 @@ choose_program (GtkDialog *message_dialog,
 static void
 show_unhandled_type_error (ActivateParametersInstall *parameters)
 {
+#ifdef G_OS_WIN32
+    GList *single_file = g_list_append (NULL, nautilus_file_ref (parameters->file));
+    if (nautilus_launch_application_with_dialog (single_file, parameters->parent_window))
+    {
+        g_list_free_full (single_file, g_object_unref);
+        activate_parameters_install_free (parameters);
+        return;
+    }
+    g_list_free_full (single_file, g_object_unref);
+#endif
     GtkWidget *dialog;
     g_autofree char *body = NULL;
     g_autofree char *content_type_description = NULL;

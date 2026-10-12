@@ -38,6 +38,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <gdk/win32/gdkwin32.h>
 #endif
 
@@ -596,4 +597,62 @@ nautilus_launch_desktop_file (const char  *desktop_file_uri,
     g_list_free_full (files, g_object_unref);
     g_object_unref (context);
     g_object_unref (app_info);
+}
+
+gboolean
+nautilus_launch_application_with_dialog (GList     *files,
+                                         GtkWindow *parent_window)
+{
+#ifdef _WIN32
+    if (files == NULL || files->data == NULL)
+    {
+        return FALSE;
+    }
+
+    NautilusFile *file = NAUTILUS_FILE (files->data);
+    g_autoptr (GFile) location = nautilus_file_get_location (file);
+    if (location == NULL)
+    {
+        return FALSE;
+    }
+
+    g_autofree gchar *local_path = g_file_get_path (location);
+    if (local_path == NULL)
+    {
+        return FALSE;
+    }
+
+    HWND parent_hwnd = NULL;
+    if (parent_window != NULL)
+    {
+        GtkNative *native = gtk_widget_get_native (GTK_WIDGET (parent_window));
+        if (native != NULL)
+        {
+            GdkSurface *surface = gtk_native_get_surface (native);
+            if (surface != NULL)
+            {
+                parent_hwnd = (HWND) gdk_win32_surface_get_handle (surface);
+            }
+        }
+    }
+
+    wchar_t *wpath = (wchar_t *) g_utf8_to_utf16 (local_path, -1, NULL, NULL, NULL);
+    if (wpath == NULL)
+    {
+        return FALSE;
+    }
+
+    OPENASINFO oai;
+    memset (&oai, 0, sizeof (oai));
+    oai.pcszFile = wpath;
+    oai.pcszClass = NULL;
+    oai.oaifInFlags = OAIF_EXEC | OAIF_REGISTER_EXT | OAIF_ALLOW_REGISTRATION;
+
+    HRESULT hr = SHOpenWithDialog (parent_hwnd, &oai);
+    g_free (wpath);
+
+    return SUCCEEDED (hr);
+#else
+    return FALSE;
+#endif
 }

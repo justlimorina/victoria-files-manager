@@ -50,3 +50,5 @@ void nautilus_launch_application_from_command_array (GdkDisplay                 
 void nautilus_launch_desktop_file                   (const char                        *desktop_file_uri,
                                                      const GList                       *parameter_uris,
                                                      GtkWindow                         *parent_window);
+gboolean nautilus_launch_application_with_dialog    (GList                             *files,
+                                                     GtkWindow                         *parent_window);

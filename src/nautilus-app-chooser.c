@@ -173,7 +173,13 @@ nautilus_app_chooser_constructed (GObject *object)
 
     gtk_app_chooser_widget_set_show_default (GTK_APP_CHOOSER_WIDGET (self->app_chooser_widget), TRUE);
     gtk_app_chooser_widget_set_show_fallback (GTK_APP_CHOOSER_WIDGET (self->app_chooser_widget), TRUE);
+#ifdef G_OS_WIN32
+    /* On Windows, GLib's g_app_info_get_all() is polluted by non-executable UWP system packages
+     * (Captive Portal Flow, Eye Control, etc.). Hide that section in favor of Recommended/Default. */
+    gtk_app_chooser_widget_set_show_other (GTK_APP_CHOOSER_WIDGET (self->app_chooser_widget), FALSE);
+#else
     gtk_app_chooser_widget_set_show_other (GTK_APP_CHOOSER_WIDGET (self->app_chooser_widget), TRUE);
+#endif
 
     /* initialize sensitivity */
     info = gtk_app_chooser_get_app_info (GTK_APP_CHOOSER (self->app_chooser_widget));
